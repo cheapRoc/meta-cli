@@ -2,89 +2,132 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"os"
 
+	"github.com/fatih/color"
 	triton "github.com/joyent/triton-go"
 	"github.com/joyent/triton-go/authentication"
 	"github.com/joyent/triton-go/compute"
 )
 
-var nameFlag string
-
-type Config struct {
-	keyID       string
-	accountName string
-	tritonURL   string
-}
-
-func envConfig() (*Config, error) {
-	cfg := &Config{
-		keyID:       os.Getenv("SDC_KEY_ID"),
-		accountName: os.Getenv("SDC_ACCOUNT"),
-		tritonURL:   os.Getenv("SDC_URL"),
-	}
-
-	// privateKey, err := ioutil.ReadFile(cfg.keyPath)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("can't find key file matching %s\n%s", cfg.keyID, err)
-	// }
-	// cfg.privateKey = privateKey
-	return cfg, nil
-}
+var (
+	hlName = color.New(color.FgBlue, color.Bold).SprintFunc()
+	hlKey  = color.New(color.FgYellow).SprintFunc()
+)
 
 func main() {
-	flag.StringVar(&nameFlag, "name", "", "Glob name of instances to set metadata")
-	flag.Parse()
+	args, profile := NewFlagArgs(), NewProfile()
 
-	cfg, err := envConfig()
-	if err != nil {
-		log.Fatalf("can't configure triton using: %v+", cfg)
-	}
-
-	signer, err := authentication.NewSSHAgentSigner(cfg.keyID, cfg.accountName)
+	signer, err := authentication.NewSSHAgentSigner(profile.keyID, profile.accountName)
 	if err != nil {
 		log.Fatalf("can't configure NewSSHAgentSigner: %s", err)
 	}
 
-	// signer, err := authentication.NewPrivateKeySigner(cfg.keyID, cfg.privateKey, cfg.accountName)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	api, err := compute.NewClient(&triton.ClientConfig{
-		TritonURL:   cfg.tritonURL,
-		AccountName: cfg.accountName,
+	c, err := compute.NewClient(&triton.ClientConfig{
+		TritonURL:   profile.tritonURL,
+		AccountName: profile.accountName,
 		Signers:     []authentication.Signer{signer},
 	})
 	if err != nil {
 		log.Fatalf("can't init client: %s", err)
 	}
 
-	// search for all instances by a given name in Triton
+	if err = args.ValidateName(); err != nil {
+		os.Exit(1)
+		return
+	}
 
-	insts, err := api.Instances().List(context.Background(), &compute.ListInstancesInput{
-		Alias: nameFlag,
-		Limit: 1,
+	insts, err := c.Instances().List(context.Background(), &compute.ListInstancesInput{
+		Name: args.name,
 	})
 	if err != nil {
 		log.Fatalf("can't find instances: %s")
 	}
 
-	for _, inst := range insts {
-		fmt.Println("Instance: ", inst.Name)
+	if args.deleteAll {
+		for _, inst := range insts {
+			err := c.Instances().DeleteAllMetadata(context.Background(), &compute.DeleteAllMetadataInput{
+				ID: inst.ID,
+			})
+			if err == nil {
+				fmt.Printf("%s: Cleared all metadata\n", hlName(inst.Name))
+			}
+		}
+
+		os.Exit(0)
+		return
 	}
 
-	// for G groups of instances, perform T goroutines for updating metadata
+	if args.delete {
+		for _, inst := range insts {
+			err := c.Instances().DeleteMetadata(context.Background(), &compute.DeleteMetadataInput{
+				ID:  inst.ID,
+				Key: args.key,
+			})
+			if err == nil {
+				fmt.Printf("%s: Removed %s\n", hlName(inst.Name), hlKey(args.key))
+			}
+		}
 
-	// mdata, err := api.Instances().UpdateMetadata(context.Background(), &compute.UpdateMetadataInput{
-	// 	ID: "2e021f5b-1aff-6f9e-c68b-fc33808f8355",
-	// 	Metadata: map[string]string{
-	// 		"something-two": "true",
-	// 	},
-	// })
+		os.Exit(0)
+		return
+	}
 
-	// fmt.Println("mdata: %v+", mdata)
+	if len(args.metadata) > 0 {
+		for _, inst := range insts {
+			mdata, _ := c.Instances().UpdateMetadata(context.Background(), &compute.UpdateMetadataInput{
+				ID:       inst.ID,
+				Metadata: args.metadata,
+			})
+			for key, val := range mdata {
+				fmt.Printf("%s: %s = %s\n", hlName(inst.Name), hlKey(key), val)
+			}
+			fmt.Println("")
+		}
+
+		os.Exit(0)
+		return
+	}
+
+	if args.key != "" && args.value != "" {
+		for _, inst := range insts {
+			mdata, _ := c.Instances().UpdateMetadata(context.Background(), &compute.UpdateMetadataInput{
+				ID: inst.ID,
+				Metadata: map[string]string{
+					args.key: args.value,
+				},
+			})
+			for key, val := range mdata {
+				fmt.Printf("%s: %s = %s\n", hlName(inst.Name), hlKey(key), val)
+			}
+			fmt.Println("")
+		}
+
+		os.Exit(0)
+		return
+	}
+
+	if args.key != "" {
+		for _, inst := range insts {
+			body, _ := c.Instances().GetMetadata(context.Background(), &compute.GetMetadataInput{
+				ID:  inst.ID,
+				Key: args.key,
+			})
+			fmt.Printf("%s: %s = %s\n", hlName(inst.Name), hlKey(args.key), body)
+		}
+
+		os.Exit(0)
+		return
+	}
+
+	for _, inst := range insts {
+		mdata, _ := c.Instances().ListMetadata(context.Background(), &compute.ListMetadataInput{
+			ID: inst.ID,
+		})
+		for key, val := range mdata {
+			fmt.Printf("%s: %s = %s\n", hlName(inst.Name), hlKey(key), val)
+		}
+	}
 }
