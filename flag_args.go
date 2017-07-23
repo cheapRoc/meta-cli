@@ -19,11 +19,11 @@ func NewFlagArgs() FlagArgs {
 	var deleteFlag, allFlag bool
 	var metadataFlags MultiFlag
 
-	flag.StringVar(&nameFlag, "name", "", "Glob name of instances to set metadata")
-	flag.StringVar(&keyFlag, "key", "", "Key of metadata to get on all instances")
-	flag.StringVar(&valueFlag, "val", "", "Value of metadata to set on an instance")
+	flag.StringVar(&nameFlag, "name", "", "Name of instance")
+	flag.StringVar(&keyFlag, "key", "", "Key of metadata")
+	flag.StringVar(&valueFlag, "val", "", "Value of metadata")
 
-	flag.Var(&metadataFlags, "data", "Pass metadata in the format: 'key=value'")
+	flag.Var(&metadataFlags, "data", "Set metadata in the format: 'key=value'")
 
 	flag.BoolVar(&deleteFlag, "delete", false, "Delete metadata key from an instance (use with -key or -all)")
 	flag.BoolVar(&allFlag, "all", false, "Delete all metadata from an instance (use with -delete)")
@@ -42,7 +42,7 @@ func NewFlagArgs() FlagArgs {
 
 func (f FlagArgs) ValidateName() error {
 	if f.name == "" {
-		return fmt.Errorf("No instance name referenced: %s\n", f.name)
+		return fmt.Errorf("-name flag required\n")
 	}
 	return nil
 }

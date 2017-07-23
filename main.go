@@ -35,15 +35,14 @@ func main() {
 	}
 
 	if err = args.ValidateName(); err != nil {
-		os.Exit(1)
-		return
+		log.Fatal(err)
 	}
 
 	insts, err := c.Instances().List(context.Background(), &compute.ListInstancesInput{
 		Name: args.name,
 	})
 	if err != nil {
-		log.Fatalf("can't find instances: %s")
+		log.Fatalf("can't find instances: %s", err)
 	}
 
 	if args.deleteAll {
