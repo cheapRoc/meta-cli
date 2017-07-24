@@ -19,7 +19,7 @@ func NewFlagArgs() FlagArgs {
 	var deleteFlag, allFlag bool
 	var metadataFlags MultiFlag
 
-	flag.StringVar(&nameFlag, "name", "", "Name of instance")
+	flag.StringVar(&nameFlag, "name", "", "Required name of instance")
 	flag.StringVar(&keyFlag, "key", "", "Key of metadata")
 	flag.StringVar(&valueFlag, "val", "", "Value of metadata")
 
